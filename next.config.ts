@@ -12,6 +12,9 @@ const sharpTrace = [
 ];
 
 const nextConfig: NextConfig = {
+  // Neon can be slow to wake during prerender. The default 60s aborts the
+  // page in progress and fails the whole build.
+  staticPageGenerationTimeout: 180,
   // Payload's admin SSR imports sharp. Keep the native binary out of the
   // Turbopack graph and inside the Vercel serverless trace.
   serverExternalPackages: ["sharp"],

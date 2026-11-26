@@ -4,6 +4,7 @@ import {
   GoogleTagManager,
   GoogleTagManagerNoscript,
 } from "@/components/analytics/GoogleTagManager";
+import { absoluteSiteUrl } from "@/lib/siteUrl";
 import "./globals.css";
 
 // Confirmed via design.md: font-family Figtree, weight 400, style Regular.
@@ -38,7 +39,10 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SERVER_URL || "https://designasylum.studio",
+    absoluteSiteUrl(
+      process.env.NEXT_PUBLIC_SERVER_URL,
+      "https://designasylum.studio",
+    ),
   ),
   title: "Design Asylum — Strategic Branding & Digital Design Studio",
   description:

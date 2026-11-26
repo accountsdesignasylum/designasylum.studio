@@ -6,6 +6,7 @@ import { lexicalEditor } from "@payloadcms/richtext-lexical";
 import { buildConfig } from "payload";
 import sharp from "sharp";
 
+import { absoluteSiteUrl } from "./lib/siteUrl";
 import { ensureSchema } from "./cms/ensureSchema";
 import { prefillPageEntries } from "./cms/prefillPages";
 import { postgresConnectionString } from "./cms/postgres";
@@ -103,7 +104,10 @@ export default buildConfig({
     await ensureSchema(payload);
     await prefillPageEntries(payload);
   },
-  serverURL: process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000",
+  serverURL: absoluteSiteUrl(
+    process.env.NEXT_PUBLIC_SERVER_URL,
+    "http://localhost:3000",
+  ),
   admin: {
     user: Users.slug,
     importMap: {
@@ -160,8 +164,12 @@ export default buildConfig({
       idleTimeoutMillis: 30000,
     },
     // First Neon / local boot can push schema. Set PAYLOAD_PUSH=false once
-    // you switch to `npm run migrate`.
-    push: process.env.PAYLOAD_PUSH !== "false",
+    // you switch to `npm run migrate`. Never push while Next is prerendering:
+    // a slow push fails the page being exported.
+    push:
+      process.env.NEXT_PHASE === "phase-production-build"
+        ? false
+        : process.env.PAYLOAD_PUSH !== "false",
   }),
   sharp,
   plugins: [

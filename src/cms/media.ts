@@ -15,6 +15,8 @@
  * Same-origin Payload URLs (http://localhost:3000/api/media/file/...) are
  * rewritten to a path so next/image treats them as local.
  */
+import { absoluteSiteUrl } from "@/lib/siteUrl";
+
 export function resolveMediaUrl(value: unknown): string | null {
   if (!value) return null;
 
@@ -215,7 +217,11 @@ function toNextImageSrc(url: string): string {
     const sameOrigin =
       parsed.hostname === "localhost" ||
       parsed.hostname === "127.0.0.1" ||
-      (configured ? parsed.origin === new URL(configured).origin : false);
+      (configured
+        ? parsed.origin ===
+          new URL(absoluteSiteUrl(configured, "https://designasylum.studio"))
+            .origin
+        : false);
 
     if (sameOrigin) return `${parsed.pathname}${parsed.search}`;
     return parsed.href;
