@@ -29,10 +29,24 @@ type SqlColumn = {
  * Existing rows are left in place. Columns are never dropped or rewritten.
  */
 export async function ensureSchema(payload: Payload): Promise<void> {
-  // Static generation has a 60s limit. This repair locks many tables and has
-  // taken longer than that on Neon, which fails whichever page is rendering
-  // (the build reported /contact). It still runs on the live server.
-  if (process.env.NEXT_PHASE === "phase-production-build") return;
+  // The per-column relationship repair takes about 50s on Neon. Vercel kills
+  // the function at 60s, and /admin also has to render, so that request never
+  // finishes. The restored database already has these constraints. The repair
+  // still runs in local development.
+  if (
+    process.env.NEXT_PHASE === "phase-production-build" ||
+    process.env.VERCEL
+  ) {
+    try {
+      await addMissingColumns(payload);
+    } catch (error) {
+      payload.logger.error({
+        err: error,
+        msg: "Could not add missing CMS columns. Existing content was not changed.",
+      });
+    }
+    return;
+  }
 
   // Own transaction, committed before the larger schema migration. The larger
   // one locks many tables and has been rolled back on Neon, which threw away

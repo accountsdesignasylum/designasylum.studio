@@ -164,10 +164,10 @@ export default buildConfig({
       idleTimeoutMillis: 30000,
     },
     // First Neon / local boot can push schema. Set PAYLOAD_PUSH=false once
-    // you switch to `npm run migrate`. Never push while Next is prerendering:
-    // a slow push fails the page being exported.
+    // you switch to `npm run migrate`. Never push on Vercel: a push locks
+    // tables during the request and the function is killed at 60 seconds.
     push:
-      process.env.NEXT_PHASE === "phase-production-build"
+      process.env.NEXT_PHASE === "phase-production-build" || process.env.VERCEL
         ? false
         : process.env.PAYLOAD_PUSH !== "false",
   }),
