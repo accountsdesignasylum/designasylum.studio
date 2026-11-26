@@ -257,7 +257,7 @@ export interface FeaturedProject {
   /**
    * Card opens this Client: Hub → /clients/{slug}; Direct → that client’s featured case study.
    */
-  client: number | Client;
+  client?: (number | null) | Client;
   order: number;
   updatedAt: string;
   createdAt: string;
@@ -355,7 +355,7 @@ export interface Client {
         }[]
       | null;
     /**
-     * Optional — open this case study from Logo Design.
+     * Optional — open this case study from Logo Design. Save the case study under Case studies first, then select it here.
      */
     caseStudy?: (number | null) | CaseStudy;
   };
@@ -377,7 +377,7 @@ export interface Client {
       id?: string | null;
     };
     /**
-     * Optional — open this case study from Website Design.
+     * Optional — open this case study from Website Design. Save the case study under Case studies first, then select it here.
      */
     caseStudy?: (number | null) | CaseStudy;
   };
@@ -401,7 +401,7 @@ export interface Client {
         }[]
       | null;
     /**
-     * Optional — open this case study from Project Brochure.
+     * Optional — open this case study from Project Brochure. Save the case study under Case studies first, then select it here.
      */
     caseStudy?: (number | null) | CaseStudy;
   };
@@ -430,7 +430,7 @@ export interface Client {
      */
     video?: (number | null) | Media;
     /**
-     * Optional — open this case study from Brand Video.
+     * Optional — open this case study from Brand Video. Save the case study under Case studies first, then select it here.
      */
     caseStudy?: (number | null) | CaseStudy;
   };
@@ -468,7 +468,7 @@ export interface Client {
     rest?: string | null;
     subheading: string;
     /**
-     * Primary Case Study CTA on the hub.
+     * Primary Case Study CTA on the hub. Save the case study under Case studies first, then select it here.
      */
     caseStudy?: (number | null) | CaseStudy;
   };
@@ -669,7 +669,7 @@ export interface CaseStudy {
   /**
    * The brand this study belongs to. If the Client does not exist yet, create and save it first — leave Featured study empty. After you save this Case study, Direct clients pick it up automatically.
    */
-  client: number | Client;
+  client?: (number | null) | Client;
   hero: {
     heading: string;
     /**
@@ -816,7 +816,7 @@ export interface PortfolioItem {
   /**
    * Card opens this Client: Hub → /clients/{slug}; Direct → that client’s featured case study.
    */
-  client: number | Client;
+  client?: (number | null) | Client;
   order: number;
   updatedAt: string;
   createdAt: string;
@@ -833,7 +833,7 @@ export interface PainPoint {
   /**
    * Card opens this Client: Hub → /clients/{slug}; Direct → that client’s featured case study.
    */
-  client: number | Client;
+  client?: (number | null) | Client;
   order: number;
   updatedAt: string;
   createdAt: string;
