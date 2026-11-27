@@ -9,9 +9,8 @@ import {
   REST_PUT,
 } from "@payloadcms/next/routes";
 
-// Allow Payload CMS operations (uploads, migrations, relationship syncs) up to 60s
-// to prevent Vercel 10s default serverless function timeouts.
-export const maxDuration = 60;
+// Paid Vercel plan. Saves and media lookups through Neon were killed at 60s.
+export const maxDuration = 300;
 
 export const GET = REST_GET(config);
 export const POST = REST_POST(config);
