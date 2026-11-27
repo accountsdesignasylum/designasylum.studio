@@ -1,9 +1,11 @@
+import { sql } from "drizzle-orm";
 import {
   APIError,
   type CollectionAfterChangeHook,
   type CollectionBeforeChangeHook,
   type CollectionBeforeValidateHook,
   type CollectionConfig,
+  type PayloadRequest,
 } from "payload";
 import { caseStudyFields } from "../fields/caseStudyFields";
 import { seoTab } from "../fields/seoFields";
@@ -143,138 +145,68 @@ const preserveHiddenMedia: CollectionBeforeChangeHook = ({ data, originalDoc }) 
   return data;
 };
 
-const revalidatePublishedStudy: CollectionAfterChangeHook = async ({ doc, req }) => {
-  try {
-    const clientRef = doc.client;
-    let clientSlug =
-      typeof clientRef === "object" && clientRef !== null
-        ? (clientRef as { slug?: string }).slug
-        : undefined;
-    const clientId =
-      typeof clientRef === "object" && clientRef !== null
-        ? (clientRef as { id?: string | number }).id
-        : clientRef;
-    if (!clientSlug && clientId != null) {
-      const client = await req.payload.findByID({
-        collection: "clients",
-        id: clientId,
-        depth: 0,
-        req,
-      });
-      clientSlug = client.slug;
-    }
-    if (clientSlug && doc.slug) {
-      const { revalidatePath } = await import("next/cache");
-      revalidatePath(`/clients/${clientSlug}/${doc.slug}`);
-    }
-  } catch {
-    // Seed and scripts run outside a Next.js request.
-  }
-  return doc;
+type TransactionDb = {
+  execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
 };
 
-const syncCaseStudyToClient: CollectionAfterChangeHook = async ({
-  doc,
-  req,
-  context,
-}) => {
-  if (context?.skipFeaturedAttach && context?.skipHeroSync) return doc;
+function transactionDb(req: PayloadRequest): TransactionDb | null {
+  const id = req.transactionID;
+  if (id == null) return null;
+  const sessions = (
+    req.payload.db as { sessions?: Record<string, { db?: TransactionDb }> }
+  ).sessions;
+  return sessions?.[String(id)]?.db ?? null;
+}
+
+/** A failed statement aborts the whole Postgres transaction, even inside catch. */
+async function protectCaseStudySave(
+  req: PayloadRequest,
+  name: string,
+  run: () => Promise<void>,
+): Promise<void> {
+  const tx = transactionDb(req);
+  if (tx) await tx.execute(sql.raw(`SAVEPOINT ${name}`));
+  try {
+    await run();
+    if (tx) await tx.execute(sql.raw(`RELEASE SAVEPOINT ${name}`));
+  } catch (error) {
+    if (tx) {
+      try {
+        await tx.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${name}`));
+        await tx.execute(sql.raw(`RELEASE SAVEPOINT ${name}`));
+      } catch {
+        // The transaction was already finished.
+      }
+    }
+    req.payload.logger.error({ err: error, msg: `Case study save kept after ${name} failed.` });
+  }
+}
+
+const syncCaseStudyToClient: CollectionAfterChangeHook = async ({ doc, req, context }) => {
+  if (context?.skipFeaturedAttach) return doc;
   const clientRef = doc.client;
   const clientId =
     typeof clientRef === "object" && clientRef !== null
       ? (clientRef as { id?: string | number }).id
       : clientRef;
-  if (clientId == null) return doc;
+  const studyId = Number(doc.id);
+  const clientIdNum = Number(clientId);
+  if (!Number.isInteger(studyId) || !Number.isInteger(clientIdNum)) return doc;
 
-  try {
-    const client = await req.payload.findByID({
-      collection: "clients",
-      id: clientId,
-      depth: 0,
-      req,
-    });
-    if (!client) return doc;
+  const tx = transactionDb(req);
+  if (!tx) return doc;
 
-    const dataToUpdate: Record<string, unknown> = {};
-
-    // 1. Attach as featuredStudy for direct clients if empty
-    if (!context?.skipFeaturedAttach && client.projectType === "direct" && !client.featuredStudy) {
-      dataToUpdate.featuredStudy = doc.id;
-    }
-
-    // 2. Sync hero to placements if needed
-    if (!context?.skipHeroSync) {
-      const heroImageId =
-        doc.hero?.layout === "split"
-          ? (typeof doc.hero?.left?.image === "object" && doc.hero?.left?.image !== null
-              ? (doc.hero.left.image as { id?: string | number }).id
-              : doc.hero?.left?.image) ||
-            (typeof doc.hero?.right?.image === "object" && doc.hero?.right?.image !== null
-              ? (doc.hero.right.image as { id?: string | number }).id
-              : doc.hero?.right?.image)
-          : typeof doc.hero?.image?.image === "object" && doc.hero?.image?.image !== null
-            ? (doc.hero.image.image as { id?: string | number }).id
-            : doc.hero?.image?.image;
-
-      const heroHeading = String(doc.hero?.heading || doc.title || "").trim();
-
-      const placements = (client.placements || {}) as Record<string, Record<string, unknown>>;
-      let modified = false;
-
-      const updatePlacement = (
-        key: "clientsPage" | "workPage" | "featuredProject" | "portfolioItem",
-        defaults: { image?: unknown; service?: string },
-      ) => {
-        const current = placements[key] || {};
-        const updated = { ...current };
-        let changed = false;
-
-        if (defaults.image != null && !current.image) {
-          updated.image = defaults.image;
-          changed = true;
-        }
-        if (defaults.service && !current.service) {
-          updated.service = defaults.service;
-          changed = true;
-        }
-
-        if (changed) {
-          placements[key] = updated;
-          modified = true;
-        }
-      };
-
-      if (heroImageId != null) {
-        updatePlacement("clientsPage", { image: heroImageId, service: heroHeading });
-        updatePlacement("workPage", { image: heroImageId, service: heroHeading });
-        updatePlacement("featuredProject", { image: heroImageId });
-        updatePlacement("portfolioItem", { image: heroImageId });
-      } else if (heroHeading) {
-        updatePlacement("clientsPage", { service: heroHeading });
-        updatePlacement("workPage", { service: heroHeading });
-      }
-
-      if (modified) {
-        dataToUpdate.placements = placements;
-      }
-    }
-
-    if (Object.keys(dataToUpdate).length > 0) {
-      // Single direct DB update in the same transaction — eliminates connection deadlocks.
-      await req.payload.db.updateOne({
-        collection: "clients",
-        id: clientId,
-        data: dataToUpdate,
-        req,
-      });
-    }
-  } catch (err) {
-    // Under NO circumstances should secondary client placement sync fail the case study save.
-    req.payload.logger.error({
-      err,
-      msg: `Could not sync case study ${doc.id} to client ${clientId}`,
-    });
-  }
+  // One statement in this transaction. Rewriting the client through Payload
+  // validates the new study before it is committed and aborts the save.
+  await protectCaseStudySave(req, "case_study_client_sync", async () => {
+    await tx.execute(sql`
+      UPDATE clients
+      SET featured_study_id = ${studyId}
+      WHERE id = ${clientIdNum}
+        AND project_type = 'direct'
+        AND featured_study_id IS NULL
+    `);
+  });
 
   return doc;
 };
